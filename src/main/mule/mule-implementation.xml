@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+	<db:config name="Database_Config" doc:name="Database Config" doc:id="144b7c60-bbf3-4558-8c8d-d21e3ceae8bf" >
+		<db:my-sql-connection host="localhost" port="3306" user="root" password="root" database="mule" />
+	</db:config>
+	<configuration-properties doc:name="Configuration properties" doc:id="414b541c-7dad-431d-872d-90de1efa6b00" file="properties.yaml" />
+	<sub-flow name="Account-flow" doc:id="de3caa79-a734-4dbf-abdb-066866b3c59d" >
+		<choice doc:name="Choice" doc:id="b0ef760a-f372-4f71-a374-7aa53af8d408" >
+			<when expression="#[payload.minAmount == null or payload.fName == null or payload.lName == null or payload.email == null or payload.Accounttype == null]">
+				<ee:transform doc:name="Transform Message" doc:id="d1727142-30eb-4f28-877c-7a32b87004c3" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"message" : "fields can't be empty"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression="#[payload.minAmount&lt;500]">
+				<ee:transform doc:name="Transform Message" doc:id="dee050fc-63b6-4854-91be-f286353264b6" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"Message" : "Minimum amount 500 is required"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<set-variable value="#[ceil(random()* 100000)]" doc:name="accountnumber-generation" doc:id="dd301145-bda5-497a-8cd3-5a0d87a45aea" variableName="accountnumber"/>
+				<db:insert doc:name="Insert" doc:id="a129a48b-6c6e-4d76-8b50-f840e5b001ea" config-ref="Database_Config">
+					<db:sql ><![CDATA[insert into customeraccounts(accountnumber,fname,lname,mail,accountType,balance)values(:accountnumber,:fname,:lname,:mail,:accountType,:balance)]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{'accountnumber': vars.accountNumber,'fname': payload.fName,'lname': payload.lName,'mail': payload.email,'accountType': payload.Accounttype,'balance': payload.minAmount}]]]></db:input-parameters>
+				</db:insert>
+				<ee:transform doc:name="Transform Message" doc:id="69e39f12-c298-44af-ba65-366b99bbea86" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"message" : "Account created successfully with " ++ vars.accountnumber
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="Deposit-flow" doc:id="466a358b-76a3-4800-8aa5-e5ca27018ebe" >
+		<set-variable value="#[payload.amount]" doc:name="Amount" doc:id="3bbc2118-9bf3-4ae0-a1c3-a30adb1b013c" variableName="Amount"/>
+		<set-variable value="#[attributes.queryParams.accountnumber]" doc:name="accountnumber" doc:id="8c8cb34f-82e5-4766-a3f3-6e8033095e12" variableName="accountnumber"/>
+		<flow-ref doc:name="get-balance" doc:id="58c90dcc-0cbd-4a5d-922d-88be67e47252" name="get-balance"/>
+		<ee:transform doc:name="Transform Message" doc:id="2e4d5700-35da-4baa-952a-f7bb4b38710d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<db:update doc:name="update " doc:id="81a26fb4-1d0e-47e2-886f-cd0799f789fd" config-ref="Database_Config">
+			<db:sql ><![CDATA[ UPDATE mule.customeraccounts set balance = :balance where accountNumber = :accountNumber]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+	'accountNumber' : vars.accountNumber,
+	'balance' : vars.Amount + payload.balance[0]
+	
+	}]]]></db:input-parameters>
+		</db:update>
+		<ee:transform doc:name="Transform Message" doc:id="0875c589-dd73-47a9-8ffd-c7da8dfad108" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{"message" : "Amount deposited successfully"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<sub-flow name="get-balance" doc:id="2c487908-a01d-4b4f-8609-79ddbe6ac841" >
+		<db:select doc:name="Get-Balance" doc:id="15ef6e79-d33a-4c8f-87fc-089be2fa7834" config-ref="Database_Config">
+			<db:sql><![CDATA[select balance from mule.customeraccounts where accountnumber= :accountnumber]]></db:sql>
+			<db:input-parameters><![CDATA[#[{'accountnumber': vars.accountnumber}]]]></db:input-parameters>
+		</db:select>
+	</sub-flow>
+	<sub-flow name="Balance-flow" doc:id="33f1cb3b-827b-4fd1-9761-af3731ae8f02" >
+		<set-variable value="#[attributes.queryParams.accountnumber]" doc:name="Accountnumber" doc:id="70b6433e-4e10-48d0-83cc-b3ed88dfcd1f" variableName="accountnumber"/>
+		<flow-ref doc:name="get-balance" doc:id="cb5cc8b1-35b3-4264-86a6-96da24ac4322" name="get-balance"/>
+		<choice doc:name="Choice" doc:id="e486deb5-054f-4f53-8489-9cd2ae841ff4" >
+			<when expression="#[payload==[]]">
+				<ee:transform doc:name="Transform Message" doc:id="b509a506-647f-46b3-b6ab-44d5885157c9">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{"message" : "invalid account"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="2f674495-144e-48e1-afc7-2cc3f267772f">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="withdraw-flow" doc:id="55c54969-9ade-430a-9f46-f81922bf7696" >
+		<set-variable value="#[payload.amount]" doc:name="Amount" doc:id="2196ac69-43ec-40f9-9228-be4b8c9ba0d2" variableName="amount"/>
+		<set-variable value="#[attributes.queryParams.accountnumber]" doc:name="Accountnumber" doc:id="f5070183-1de7-4598-aa41-a34437230421" variableName="accountnumber"/>
+		<flow-ref doc:name="get-balance" doc:id="6ad4983b-9f2b-4e03-a84b-c71bb4d2b4e8" name="get-balance"/>
+		<ee:transform doc:name="Transform Message" doc:id="27040054-b268-4d82-bde2-6440fcba7416" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="3ed424e3-4718-4369-a16e-1fa25fb38db5" >
+			<when expression="#[vars.amount&gt;payload.balance[0]]">
+				<ee:transform doc:name="Transform Message" doc:id="080d0eaa-ecc8-4962-9cf7-47fb1af7293e" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{"Message" : "Withdraw is not possible.insufficient balance"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<db:update doc:name="Update" doc:id="85ed27fa-7577-4f73-b9e7-9456df7b3451" config-ref="Database_Config">
+					<db:sql ><![CDATA[UPDATE mule.customeraccounts set balance = :balance where accountNumber = :accountNumber]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{
+	accountNumber : vars.accountnumber,
+	balance : payload.balance[0] - vars.amount
+	}]]]></db:input-parameters>
+				</db:update>
+				<ee:transform doc:name="Transform Message" doc:id="ff596a9d-6f4a-42b9-8cfe-f9669a607836" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{"Message" : "Amount withdraw successfuluy"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

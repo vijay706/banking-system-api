@@ -1,0 +1,11 @@
+%dw 2.0
+
+type auto_de3caa79_a734_4dbf_abdb_066866b3c59d_Input_Payload = {
+  minAmount: Number, 
+  lName: String, 
+  fName: String, 
+  email: String, 
+  Accounttype: String, 
+  _?: Any
+}
+
